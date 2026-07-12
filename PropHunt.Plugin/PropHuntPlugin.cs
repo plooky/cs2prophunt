@@ -20,8 +20,7 @@ public sealed class PropHuntPlugin : BasePlugin
     private readonly HashSet<ulong> forcedNextRound = new();
     private readonly Random random = new();
     private PluginConfig config = new();
-    private bool adminPaused;
-    private bool mapActive;
+    private bool enabled;
     private string currentMapName = string.Empty;
 
     public override string ModuleName => "PropHunt";
@@ -41,34 +40,26 @@ public sealed class PropHuntPlugin : BasePlugin
         RegisterEventHandler<EventRoundStart>(OnRoundStart);
         RegisterEventHandler<EventPlayerDeath>(OnPlayerDeath);
 
-        ConfigureMapState(Server.MapName);
-
-        if (hotReload && mapActive)
-        {
-            adminPaused = false;
-            Server.NextFrame(() => StartOrRestart("Prop Hunt hot reload"));
-        }
+        currentMapName = Server.MapName;
+        enabled = false;
     }
 
     private HookResult OnRoundStart(EventRoundStart @event, GameEventInfo info)
     {
-        if (!mapActive)
+        if (!enabled)
         {
             return HookResult.Continue;
         }
 
         ApplyServerCvars();
-        if (!adminPaused && config.AutoStart)
-        {
-            ApplyTeamsForRound();
-        }
+        ApplyTeamsForRound();
 
         return HookResult.Continue;
     }
 
     private HookResult OnPlayerDeath(EventPlayerDeath @event, GameEventInfo info)
     {
-        if (!mapActive)
+        if (!enabled)
         {
             return HookResult.Continue;
         }
@@ -101,17 +92,11 @@ public sealed class PropHuntPlugin : BasePlugin
         }
 
         var action = command.ArgCount > 1 ? command.GetArg(1).ToLowerInvariant() : string.Empty;
-        if (!mapActive && action != "status" && action != "reload")
-        {
-            command.ReplyToCommand($"{Prefix} Disabled on map '{currentMapName}' because it does not match a Prop Hunt map pattern.");
-            return;
-        }
-
         if (command.ArgCount <= 1)
         {
             if (player == null)
             {
-                command.ReplyToCommand($"{Prefix} Usage: css_ph start|pause|restart|reset|team <ct|t>|threshold <number>|force <player> [player]|status|reload");
+                command.ReplyToCommand($"{Prefix} Usage: css_ph start|stop|restart|reset|team <ct|t>|threshold <number>|force <player> [player]|status|reload");
                 return;
             }
 
@@ -122,21 +107,26 @@ public sealed class PropHuntPlugin : BasePlugin
         switch (action)
         {
             case "start":
-                adminPaused = false;
+                enabled = true;
                 StartOrRestart("Prop Hunt started by admin");
                 break;
-            case "pause":
-                adminPaused = true;
-                Server.PrintToChatAll($"{Prefix} Prop Hunt team management paused by admin.");
+            case "stop":
+                Stop("Prop Hunt stopped by admin");
                 break;
             case "restart":
-                adminPaused = false;
+                if (!RequireEnabled(command)) break;
                 StartOrRestart("Prop Hunt round restarted by admin");
                 break;
             case "reset":
                 ResetSelection();
-                adminPaused = false;
-                StartOrRestart("Prop Hunt selection reset by admin");
+                if (enabled)
+                {
+                    StartOrRestart("Prop Hunt selection reset by admin");
+                }
+                else
+                {
+                    command.ReplyToCommand($"{Prefix} Selection reset; Prop Hunt remains disabled.");
+                }
                 break;
             case "team":
                 SetTeamCommand(command);
@@ -173,65 +163,64 @@ public sealed class PropHuntPlugin : BasePlugin
     private void Reload(CommandInfo command)
     {
         LoadConfig();
-        ConfigureMapState(currentMapName);
         command.ReplyToCommand($"{Prefix} Configuration reloaded.");
     }
 
     private void OnMapStart(string mapName)
     {
-        ConfigureMapState(mapName);
+        currentMapName = mapName ?? string.Empty;
+        enabled = false;
+        ResetSelection();
+        Logger.LogInformation("Prop Hunt is disabled for map {MapName} until explicitly started.", currentMapName);
     }
 
     private void OnMapEnd()
     {
-        mapActive = false;
+        enabled = false;
         ResetSelection();
-    }
-
-    private void ConfigureMapState(string mapName)
-    {
-        currentMapName = mapName ?? string.Empty;
-        mapActive = PropHuntRules.IsPropHuntMap(currentMapName, config.MapNamePatterns);
-        ResetSelection();
-        adminPaused = false;
-
-        if (mapActive)
-        {
-            ApplyServerCvars();
-            Logger.LogInformation("Prop Hunt enabled for map {MapName}.", currentMapName);
-        }
-        else
-        {
-            Logger.LogInformation("Prop Hunt disabled for non-Prop-Hunt map {MapName}.", currentMapName);
-        }
     }
 
     private void OpenMenu(CCSPlayerController player)
     {
         var menu = new ChatMenu("Prop Hunt Admin");
-        menu.AddMenuOption(adminPaused ? "Start / resume" : "Restart round", (admin, _) =>
+        menu.AddMenuOption(enabled ? "Restart round" : "Start Prop Hunt", (admin, _) =>
         {
-            var wasPaused = adminPaused;
-            adminPaused = false;
-            StartOrRestart(wasPaused ? "Prop Hunt resumed from menu" : "Prop Hunt restarted from menu");
+            var wasEnabled = enabled;
+            enabled = true;
+            StartOrRestart(wasEnabled ? "Prop Hunt restarted from menu" : "Prop Hunt started from menu");
         });
-        menu.AddMenuOption("Pause team management", (admin, _) =>
+        menu.AddMenuOption(enabled ? "Stop Prop Hunt" : "Prop Hunt is stopped", (admin, _) =>
         {
-            adminPaused = true;
-            admin.PrintToChat($"{Prefix} Team management paused.");
+            if (enabled)
+            {
+                Stop("Prop Hunt stopped from menu");
+            }
+            else
+            {
+                admin.PrintToChat($"{Prefix} Prop Hunt is already stopped.");
+            }
         });
         menu.AddMenuOption("Reset random selection", (admin, _) =>
         {
             ResetSelection();
-            adminPaused = false;
-            StartOrRestart("Prop Hunt selection reset from menu");
+            if (enabled)
+            {
+                StartOrRestart("Prop Hunt selection reset from menu");
+            }
+            else
+            {
+                admin.PrintToChat($"{Prefix} Selection reset; Prop Hunt remains disabled.");
+            }
         });
         menu.AddMenuOption($"Seeker side: {NormalizeTeamName(config.SeekerTeam)}", (admin, _) =>
         {
             config.SeekerTeam = NormalizeTeamName(config.SeekerTeam) == "CT" ? "T" : "CT";
             SaveConfig();
             ResetSelection();
-            StartOrRestart("Prop Hunt seeker side changed");
+            if (enabled)
+            {
+                StartOrRestart("Prop Hunt seeker side changed");
+            }
         });
         menu.AddMenuOption($"Threshold +1 ({config.TwoSeekerHiderThreshold})", (admin, _) =>
         {
@@ -251,6 +240,12 @@ public sealed class PropHuntPlugin : BasePlugin
 
     private void OpenForceSeekerMenu(CCSPlayerController admin)
     {
+        if (!enabled)
+        {
+            admin.PrintToChat($"{Prefix} Start Prop Hunt before forcing a seeker.");
+            return;
+        }
+
         var menu = new ChatMenu("Force seeker");
         foreach (var player in ActivePlayers())
         {
@@ -287,7 +282,10 @@ public sealed class PropHuntPlugin : BasePlugin
         config.SeekerTeam = NormalizeTeamName(token);
         SaveConfig();
         ResetSelection();
-        StartOrRestart("Prop Hunt seeker side changed by admin");
+        if (enabled)
+        {
+            StartOrRestart("Prop Hunt seeker side changed by admin");
+        }
     }
 
     private void SetThresholdCommand(CommandInfo command)
@@ -305,6 +303,11 @@ public sealed class PropHuntPlugin : BasePlugin
 
     private void ForceSeekersCommand(CommandInfo command)
     {
+        if (!RequireEnabled(command))
+        {
+            return;
+        }
+
         if (command.ArgCount <= 2)
         {
             command.ReplyToCommand($"{Prefix} Usage: !ph force <player name, slot, or steamid64> [second player]");
@@ -338,7 +341,6 @@ public sealed class PropHuntPlugin : BasePlugin
         selector.OverrideProtection();
         forcedNextRound.Clear();
         forcedNextRound.UnionWith(forced);
-        adminPaused = false;
         Server.PrintToChatAll($"{Prefix} Prop Hunt seekers forced by admin.");
         Server.ExecuteCommand("mp_restartgame 1");
     }
@@ -347,7 +349,25 @@ public sealed class PropHuntPlugin : BasePlugin
     {
         var players = ActivePlayers();
         var desired = DesiredSeekerCount(players.Count);
-        command.ReplyToCommand($"{Prefix} active={mapActive}, map={currentMapName}, paused={adminPaused}, players={players.Count}, desired_seekers={desired}, protected_next_round={selector.ProtectedNextRound.Count}, threshold={config.TwoSeekerHiderThreshold}, seeker_team={NormalizeTeamName(config.SeekerTeam)}");
+        command.ReplyToCommand($"{Prefix} enabled={enabled}, map={currentMapName}, players={players.Count}, desired_seekers={desired}, protected_next_round={selector.ProtectedNextRound.Count}, threshold={config.TwoSeekerHiderThreshold}, seeker_team={NormalizeTeamName(config.SeekerTeam)}");
+    }
+
+    private bool RequireEnabled(CommandInfo command)
+    {
+        if (enabled)
+        {
+            return true;
+        }
+
+        command.ReplyToCommand($"{Prefix} Prop Hunt is disabled. Use css_ph start first.");
+        return false;
+    }
+
+    private void Stop(string reason)
+    {
+        enabled = false;
+        ResetSelection();
+        Server.PrintToChatAll($"{Prefix} {reason}.");
     }
 
     private void StartOrRestart(string reason)

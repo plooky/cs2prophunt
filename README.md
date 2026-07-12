@@ -2,7 +2,7 @@
 
 A CounterStrikeSharp Prop Hunt game-mode controller for Counter-Strike 2 Workshop maps.
 
-The plugin activates only on map names matching a configured Prop Hunt pattern. Defaults are `ph_`, `prophunt`, `prop_hunt`, and `prop-hunt`.
+The plugin starts disabled on every map and must be explicitly enabled with `css_ph start` or the in-game admin menu.
 
 ## Requirements
 
@@ -36,3 +36,5 @@ Restart the server and verify the plugin with `css_plugins list`.
 ## Administration
 
 The `css_ph` console command is available as `!ph` in public chat and `/ph` in silent chat. In-game use requires the CounterStrikeSharp permission `@ph/admin`; the server console is always allowed.
+
+Use `!ph start` to enable the game mode and `!ph stop` to stop it.

@@ -10,5 +10,4 @@ public sealed class PluginConfig
 
     public int TwoSeekerHiderThreshold { get; set; } = PropHuntRules.DefaultTwoSeekerHiderThreshold;
 
-    public bool AutoStart { get; set; } = true;
 }
