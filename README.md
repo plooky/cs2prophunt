@@ -36,3 +36,5 @@ Restart the server and verify the plugin with `css_plugins list`.
 ## Administration
 
 The `css_ph` console command is available as `!ph` in public chat and `/ph` in silent chat. In-game use requires the CounterStrikeSharp permission `@ph/admin`; the server console is always allowed.
+
+Use `!ph start` to enable the game mode and `!ph stop` to stop it.

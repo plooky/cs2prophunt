@@ -96,7 +96,7 @@ public sealed class PropHuntPlugin : BasePlugin
         {
             if (player == null)
             {
-                command.ReplyToCommand($"{Prefix} Usage: css_ph start|pause|restart|reset|team <ct|t>|threshold <number>|force <player> [player]|status|reload");
+                command.ReplyToCommand($"{Prefix} Usage: css_ph start|stop|restart|reset|team <ct|t>|threshold <number>|force <player> [player]|status|reload");
                 return;
             }
 
@@ -110,8 +110,8 @@ public sealed class PropHuntPlugin : BasePlugin
                 enabled = true;
                 StartOrRestart("Prop Hunt started by admin");
                 break;
-            case "pause":
-                Disable("Prop Hunt disabled by admin");
+            case "stop":
+                Stop("Prop Hunt stopped by admin");
                 break;
             case "restart":
                 if (!RequireEnabled(command)) break;
@@ -189,15 +189,15 @@ public sealed class PropHuntPlugin : BasePlugin
             enabled = true;
             StartOrRestart(wasEnabled ? "Prop Hunt restarted from menu" : "Prop Hunt started from menu");
         });
-        menu.AddMenuOption(enabled ? "Disable Prop Hunt" : "Prop Hunt is disabled", (admin, _) =>
+        menu.AddMenuOption(enabled ? "Stop Prop Hunt" : "Prop Hunt is stopped", (admin, _) =>
         {
             if (enabled)
             {
-                Disable("Prop Hunt disabled from menu");
+                Stop("Prop Hunt stopped from menu");
             }
             else
             {
-                admin.PrintToChat($"{Prefix} Prop Hunt is already disabled.");
+                admin.PrintToChat($"{Prefix} Prop Hunt is already stopped.");
             }
         });
         menu.AddMenuOption("Reset random selection", (admin, _) =>
@@ -363,7 +363,7 @@ public sealed class PropHuntPlugin : BasePlugin
         return false;
     }
 
-    private void Disable(string reason)
+    private void Stop(string reason)
     {
         enabled = false;
         ResetSelection();
