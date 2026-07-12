@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="PropHunt.Core/PropHunt.Core.csproj" />
+  <Project Path="PropHunt.Plugin/PropHunt.Plugin.csproj" />
+  <Project Path="PropHunt.Tests/PropHunt.Tests.csproj" />
+</Solution>
