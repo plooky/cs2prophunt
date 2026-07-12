@@ -518,6 +518,7 @@ public sealed class PropHuntPlugin : BasePlugin
 
         config.SeekerTeam = NormalizeTeamName(config.SeekerTeam);
         config.TwoSeekerHiderThreshold = Math.Max(2, config.TwoSeekerHiderThreshold);
+        config.MapNamePatterns ??= Array.Empty<string>();
     }
 
     private void SaveConfig()
