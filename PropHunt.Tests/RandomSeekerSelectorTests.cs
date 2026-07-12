@@ -89,17 +89,4 @@ public sealed class RandomSeekerSelectorTests
         Assert.Equal(expected, PropHuntRules.HasValidBalance(hiders, seekers));
     }
 
-    [Theory]
-    [InlineData("ph_office", true)]
-    [InlineData("workshop_prophunt_mall", true)]
-    [InlineData("PROP_HUNT_HOUSE", true)]
-    [InlineData("prop-hunt-school", true)]
-    [InlineData("hns_minecraft", false)]
-    [InlineData("de_dust2", false)]
-    public void MapActivationUsesConfiguredNamePatterns(string mapName, bool expected)
-    {
-        var patterns = new[] { "ph_", "prophunt", "prop_hunt", "prop-hunt" };
-
-        Assert.Equal(expected, PropHuntRules.IsPropHuntMap(mapName, patterns));
-    }
 }
