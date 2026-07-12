@@ -21,6 +21,8 @@ public sealed class PropHuntPlugin : BasePlugin
     private readonly Random random = new();
     private PluginConfig config = new();
     private bool adminPaused;
+    private bool mapActive;
+    private string currentMapName = string.Empty;
 
     public override string ModuleName => "PropHunt";
     public override string ModuleVersion => "0.1.0";
@@ -32,13 +34,16 @@ public sealed class PropHuntPlugin : BasePlugin
     public override void Load(bool hotReload)
     {
         LoadConfig();
-        ApplyServerCvars();
         AddCommand("css_ph", "Open the Prop Hunt admin menu.", OnPhCommand);
         AddCommand("css_ph_reload", "Reload Prop Hunt configuration.", OnReloadCommand);
+        RegisterListener<Listeners.OnMapStart>(OnMapStart);
+        RegisterListener<Listeners.OnMapEnd>(OnMapEnd);
         RegisterEventHandler<EventRoundStart>(OnRoundStart);
         RegisterEventHandler<EventPlayerDeath>(OnPlayerDeath);
 
-        if (hotReload)
+        ConfigureMapState(Server.MapName);
+
+        if (hotReload && mapActive)
         {
             adminPaused = false;
             Server.NextFrame(() => StartOrRestart("Prop Hunt hot reload"));
@@ -47,6 +52,11 @@ public sealed class PropHuntPlugin : BasePlugin
 
     private HookResult OnRoundStart(EventRoundStart @event, GameEventInfo info)
     {
+        if (!mapActive)
+        {
+            return HookResult.Continue;
+        }
+
         ApplyServerCvars();
         if (!adminPaused && config.AutoStart)
         {
@@ -58,6 +68,11 @@ public sealed class PropHuntPlugin : BasePlugin
 
     private HookResult OnPlayerDeath(EventPlayerDeath @event, GameEventInfo info)
     {
+        if (!mapActive)
+        {
+            return HookResult.Continue;
+        }
+
         if (!TryGetPlayerId(@event.Userid, out var victimId))
         {
             return HookResult.Continue;
@@ -85,6 +100,13 @@ public sealed class PropHuntPlugin : BasePlugin
             return;
         }
 
+        var action = command.ArgCount > 1 ? command.GetArg(1).ToLowerInvariant() : string.Empty;
+        if (!mapActive && action != "status" && action != "reload")
+        {
+            command.ReplyToCommand($"{Prefix} Disabled on map '{currentMapName}' because it does not match a Prop Hunt map pattern.");
+            return;
+        }
+
         if (command.ArgCount <= 1)
         {
             if (player == null)
@@ -97,7 +119,7 @@ public sealed class PropHuntPlugin : BasePlugin
             return;
         }
 
-        switch (command.GetArg(1).ToLowerInvariant())
+        switch (action)
         {
             case "start":
                 adminPaused = false;
@@ -151,8 +173,37 @@ public sealed class PropHuntPlugin : BasePlugin
     private void Reload(CommandInfo command)
     {
         LoadConfig();
-        ApplyServerCvars();
+        ConfigureMapState(currentMapName);
         command.ReplyToCommand($"{Prefix} Configuration reloaded.");
+    }
+
+    private void OnMapStart(string mapName)
+    {
+        ConfigureMapState(mapName);
+    }
+
+    private void OnMapEnd()
+    {
+        mapActive = false;
+        ResetSelection();
+    }
+
+    private void ConfigureMapState(string mapName)
+    {
+        currentMapName = mapName ?? string.Empty;
+        mapActive = PropHuntRules.IsPropHuntMap(currentMapName, config.MapNamePatterns);
+        ResetSelection();
+        adminPaused = false;
+
+        if (mapActive)
+        {
+            ApplyServerCvars();
+            Logger.LogInformation("Prop Hunt enabled for map {MapName}.", currentMapName);
+        }
+        else
+        {
+            Logger.LogInformation("Prop Hunt disabled for non-Prop-Hunt map {MapName}.", currentMapName);
+        }
     }
 
     private void OpenMenu(CCSPlayerController player)
@@ -296,7 +347,7 @@ public sealed class PropHuntPlugin : BasePlugin
     {
         var players = ActivePlayers();
         var desired = DesiredSeekerCount(players.Count);
-        command.ReplyToCommand($"{Prefix} paused={adminPaused}, players={players.Count}, desired_seekers={desired}, protected_next_round={selector.ProtectedNextRound.Count}, threshold={config.TwoSeekerHiderThreshold}, seeker_team={NormalizeTeamName(config.SeekerTeam)}");
+        command.ReplyToCommand($"{Prefix} active={mapActive}, map={currentMapName}, paused={adminPaused}, players={players.Count}, desired_seekers={desired}, protected_next_round={selector.ProtectedNextRound.Count}, threshold={config.TwoSeekerHiderThreshold}, seeker_team={NormalizeTeamName(config.SeekerTeam)}");
     }
 
     private void StartOrRestart(string reason)
@@ -447,6 +498,7 @@ public sealed class PropHuntPlugin : BasePlugin
 
         config.SeekerTeam = NormalizeTeamName(config.SeekerTeam);
         config.TwoSeekerHiderThreshold = Math.Max(2, config.TwoSeekerHiderThreshold);
+        config.MapNamePatterns ??= Array.Empty<string>();
     }
 
     private void SaveConfig()
